@@ -1,0 +1,98 @@
+---
+title: "Project - Machine Learning"
+author: "Vijay"
+date: "April 29, 2017"
+output: html_document
+---
+```{r setoptions, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+knitr::opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE)
+```     
+
+## Introduction
+
+With the increase in the usage of activity trackers we have a lot of data available with us in regards to fitness and activities. In this paper I am going to look one such huge data generated from the usage of few people. We will look at all the parameters in the dataset, cleanse them, use only the required parameters and build a model based on that to predict the activity based on the measurements. We will then use the same model to predict what the activity on a test dataset. 
+
+## Exploring the data
+
+We will load the required library and read the complete dataset into R
+```{r}
+library(caret)
+library(e1071)
+set.seed(1234)
+training_initial <- read.csv("pml-training.csv")
+```
+When looking at the file we can see that there are many columns with missing values. Let us see how many columns have more than 90% of missing values. These predictors with so much missing values will not add any value to the model. Instead it may affect the accuracy of the models. We will remove them from our training dataset
+
+```{r}
+missing_cols <- colnames(training_initial)[(colSums(is.na(training_initial))/nrow(training_initial)) > 0.9]
+trainingv1 <- training_initial[ , !(names(training_initial) %in% missing_cols)]
+```
+Again there are many columns with blank values. We will do the same what we did for the missing values to these blank values. 
+
+```{r}
+blank_cols <- colnames(trainingv1)[(colSums(trainingv1 == "")/nrow(trainingv1)) > 0.9]
+trainingv2 <- trainingv1[ , !(names(trainingv1) %in% blank_cols)]
+table(trainingv2$new_window)
+```
+Now looking at the remining predictors the name and timestamp will not add anything to model for predicting what activity they are performing. Also the new_window columns are having very less variability so we will remove those columns and form our final training dataset using which we can predict our model.
+
+```{r}
+trainingv3 <- trainingv2[, -c(1:7)]
+head(trainingv3)
+training <- trainingv3
+```
+
+## Model Selection
+Now we have got all the necessary and only required data for our analysis we will split the model into a training and validation dataset. Since we have close to 20K observations we can go for a 50:50 model for training and validation. 
+
+```{r}
+intrain <- createDataPartition(y=training$classe,
+                               p=0.5, list=FALSE)
+newtrainDF <- training[intrain,]
+validDF <- training[-intrain,]
+newvalidDF <- validDF[,!(names(validDF) %in% "classe")]
+```
+
+Now we get into what algorithm we can use to build our model. Since the output is a factor variable it and the predictors are all numeric variable it will be best to use a tree type of model. The decision tree may be used for simple models with less predictors. Random forest will be the best suited algorithm for this kind of data that we want to predict. Let us build a model and see how it works on our validation data
+
+```{r cache=TRUE}
+RFfit <- train(classe ~ ., method = "rf", data = newtrainDF)
+testmodel <- predict(RFfit,newvalidDF)
+confusionMatrix(testmodel,validDF$classe)
+```
+
+The accuracy of this model is 99% on the validation dataset which is very good for a predictive model. Let us also look at other models and see how do they perform and see if there are any other better models that we can create.
+
+```{r cache=TRUE}
+dectreefit <- train(classe ~ ., method = "rpart", data = newtrainDF)
+testdectree <- predict(dectreefit,newvalidDF)
+confusionMatrix(testdectree,validDF$classe)
+
+svmfit <- svm(classe ~ ., data = newtrainDF)
+testsvm <- predict(svmfit,newvalidDF)
+confusionMatrix(testsvm,validDF$classe)
+```
+
+The decision tree model is not that good and it has only 54% accuracy. The SVM model is also very good model but none of these are better than Random forest so we can conclude that it is the best model for the given set of predictors
+
+## Applying the model to the test dataset
+Now lets read the test dataset and the read only the columns that are required for us to predict the activity
+```{r}
+testing_initial <- read.csv("pml-testing.csv")
+testing <- testing_initial[, colnames(newvalidDF)]
+finaltest <- predict(RFfit,testing)
+finaltest
+```
+
+So we are able to predict the activity of the test dataset as well. Since the model is 98% accurate these predictions will be almost accurate. 
+
+# Accuracy plot of the model
+The model still shows that if we can reduce the predictors the accuracy will still improve. We need to do more analysis and study the data to remove the predictors which are similar in nature
+```{r}
+par(mfrow = c(2,2))
+plot(RFfit)
+```
+
+## Conclusion
+
+Hence by cleaning the data and using all the necessary predictors we are able to build an accurate model. This model can now be used to predict the activity based on the parameters available.
